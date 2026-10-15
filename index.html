@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多週期倒數計時器</title>
+    <style>
+        :root {
+            --primary-color: #4f46e5;
+            --primary-hover: #4338ca;
+            --bg-color: #f3f4f6;
+            --card-bg: #ffffff;
+            --text-color: #1f2937;
+            --danger-color: #ef4444;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            background-color: var(--card-bg);
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            width: 100%;
+            max-width: 400px;
+            box-sizing: border-box;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 24px;
+            color: var(--text-color);
+        }
+
+        .setting-group {
+            margin-bottom: 16px;
+            text-align: left;
+        }
+
+        label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: #4b5563;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px 12px;
+            font-size: 1rem;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            box-sizing: border-box;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input:focus {
+            border-color: var(--primary-color);
+        }
+
+        .display-box {
+            margin: 30px 0;
+            padding: 20px;
+            background-color: #f9fafb;
+            border-radius: 12px;
+            border: 2px solid #e5e7eb;
+        }
+
+        .time-display {
+            font-size: 3.5rem;
+            font-weight: bold;
+            font-variant-numeric: tabular-nums;
+            color: var(--primary-color);
+            margin-bottom: 10px;
+        }
+
+        .time-display.warning {
+            color: var(--danger-color);
+            animation: pulse 1s infinite;
+        }
+
+        .cycle-display {
+            font-size: 1rem;
+            color: #6b7280;
+            font-weight: 500;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 12px;
+        }
+
+        button {
+            flex: 1;
+            padding: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            color: white;
+            background-color: var(--primary-color);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s, opacity 0.2s;
+        }
+
+        button:hover {
+            background-color: var(--primary-hover);
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        button.secondary {
+            background-color: #6b7280;
+        }
+
+        button.secondary:hover {
+            background-color: #4b5563;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>多週期倒數計時器</h1>
+        
+        <!-- 設定區域 -->
+        <div id="settings-panel">
+            <div class="setting-group">
+                <label for="seconds-input">每輪倒數時間 (秒)</label>
+                <input type="number" id="seconds-input" value="60" min="1">
+            </div>
+            <div class="setting-group">
+                <label for="cycles-input">總週期數 (輪)</label>
+                <input type="number" id="cycles-input" value="3" min="1">
+            </div>
+        </div>
+
+        <!-- 畫面顯示區域 -->
+        <div class="display-box">
+            <div id="time-display" class="time-display">01:00</div>
+            <div id="cycle-display" class="cycle-display">準備就緒 (第 1 / 3 輪)</div>
+        </div>
+
+        <!-- 按鈕控制區域 -->
+        <div class="btn-group">
+            <button id="start-btn" onclick="startTimer()">開始</button>
+            <button id="reset-btn" class="secondary" onclick="resetTimer()">重設</button>
+        </div>
+    </div>
+
+    <script>
+        let countdownInterval = null;
+        let totalSecondsPerCycle = 60;
+        let totalCycles = 3;
+        let currentCycle = 1;
+        let timeLeft = 60;
+        let isRunning = false;
+
+        // Web Audio API 播放提示音
+        function playBeep(isFinal) {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+
+                oscillator.type = 'sine';
+                // 最後一秒音調高一點 (800Hz)，前五秒內低一點 (600Hz)
+                oscillator.frequency.value = isFinal ? 880 : 660; 
+
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.3);
+            } catch (e) {
+                console.log('音訊播放失敗', e);
+            }
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+
+        function updateDisplay() {
+            const timeDisplay = document.getElementById('time-display');
+            const cycleDisplay = document.getElementById('cycle-display');
+
+            timeDisplay.textContent = formatTime(timeLeft);
+            cycleDisplay.textContent = `進行中 (第 ${currentCycle} / ${totalCycles} 輪)`;
+
+            if (timeLeft <= 5 && timeLeft > 0) {
+                timeDisplay.classList.add('warning');
+            } else {
+                timeDisplay.classList.remove('warning');
+            }
+        }
+
+        function startTimer() {
+            if (isRunning) return;
+
+            // 取得使用者設定
+            if (currentCycle === 1 && timeLeft === totalSecondsPerCycle) {
+                totalSecondsPerCycle = parseInt(document.getElementById('seconds-input').value) || 60;
+                totalCycles = parseInt(document.getElementById('cycles-input').value) || 3;
+                timeLeft = totalSecondsPerCycle;
+            }
+
+            isRunning = true;
+            document.getElementById('start-btn').disabled = true;
+            document.getElementById('seconds-input').disabled = true;
+            document.getElementById('cycles-input').disabled = true;
+
+            updateDisplay();
+
+            countdownInterval = setInterval(() => {
+                if (timeLeft > 0) {
+                    timeLeft--;
+                    if (timeLeft <= 5 && timeLeft > 0) {
+                        playBeep(false); // 最後五秒倒數逼逼聲
+                    }
+                    if (timeLeft === 0) {
+                        playBeep(true); // 歸零提示音
+                    }
+                    updateDisplay();
+                }
+
+                // 檢查是否該輪結束
+                if (timeLeft === 0) {
+                    if (currentCycle < totalCycles) {
+                        // 進入下一輪
+                        currentCycle++;
+                        timeLeft = totalSecondsPerCycle;
+                        setTimeout(() => updateDisplay(), 500);
+                    } else {
+                        // 全部完成
+                        clearInterval(countdownInterval);
+                        isRunning = false;
+                        document.getElementById('cycle-display').textContent = '全部週期完成！';
+                        document.getElementById('start-btn').disabled = false;
+                        document.getElementById('seconds-input').disabled = false;
+                        document.getElementById('cycles-input').disabled = false;
+                    }
+                }
+            }, 1000);
+        }
+
+        function resetTimer() {
+            clearInterval(countdownInterval);
+            isRunning = false;
+            totalSecondsPerCycle = parseInt(document.getElementById('seconds-input').value) || 60;
+            totalCycles = parseInt(document.getElementById('cycles-input').value) || 3;
+            currentCycle = 1;
+            timeLeft = totalSecondsPerCycle;
+
+            document.getElementById('start-btn').disabled = false;
+            document.getElementById('seconds-input').disabled = false;
+            document.getElementById('cycles-input').disabled = false;
+
+            const timeDisplay = document.getElementById('time-display');
+            timeDisplay.classList.remove('warning');
+            timeDisplay.textContent = formatTime(timeLeft);
+            document.getElementById('cycle-display').textContent = `準備就緒 (第 1 / ${totalCycles} 輪)`;
+        }
+
+        // 初始化預設顯示
+        resetTimer();
+    </script>
+</body>
+</html>
